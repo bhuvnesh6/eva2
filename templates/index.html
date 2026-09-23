@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eva V2 - Voice Assistant</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f1115;
+    color: #eaeaea;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  .card {
+    width: 420px;
+    max-width: 92vw;
+    background: #1a1d24;
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.4);
+    text-align: center;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: #8b8f98; font-size: 13px; margin-bottom: 20px; }
+  #status { font-size: 14px; color: #9fd3ff; min-height: 20px; margin-bottom: 16px; }
+  button {
+    padding: 12px 22px;
+    border: none;
+    border-radius: 24px;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  #connectBtn { background: #4f7dfc; color: #fff; }
+  #disconnectBtn { background: #e5484d; color: #fff; }
+  #captions {
+    margin-top: 18px;
+    max-height: 260px;
+    overflow-y: auto;
+    text-align: left;
+    font-size: 13.5px;
+    line-height: 1.6;
+    border-top: 1px solid #2a2e37;
+    padding-top: 12px;
+  }
+  #captions p { margin: 4px 0; }
+  #captions .you { color: #eaeaea; }
+  #captions .eva { color: #9fd3ff; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎙️ Eva V2</h1>
+    <div class="sub">LiveKit voice pipeline &middot; Groq + Deepgram + Sarvam</div>
+    <p id="status">Not connected</p>
+    <button id="connectBtn">Talk to Eva</button>
+    <button id="disconnectBtn" style="display:none;">Hang up</button>
+    <div id="captions"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <script>
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const statusEl = document.getElementById('status');
+    const captionsEl = document.getElementById('captions');
+
+    let room = null;
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function addCaption(text, who) {
+      const p = document.createElement('p');
+      p.className = who;
+      p.textContent = (who === 'eva' ? 'Eva: ' : 'You: ') + text;
+      captionsEl.appendChild(p);
+      captionsEl.scrollTop = captionsEl.scrollHeight;
+    }
+
+    async function connect() {
+      try {
+        setStatus('Requesting access token...');
+        const res = await fetch('/api/token', { method: 'POST' });
+        if (!res.ok) throw new Error('token request failed');
+        const data = await res.json();
+
+        room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+
+        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+          if (track.kind === LivekitClient.Track.Kind.Audio) {
+            const el = track.attach();
+            el.autoplay = true;
+            document.body.appendChild(el);
+          }
+        });
+
+        // Live captions - depends on RoomOutputOptions(transcription_enabled=True)
+        // being set in agent.py. Safe to ignore if this event isn't supported
+        // by your installed livekit-client version; voice still works either way.
+        room.on(LivekitClient.RoomEvent.TranscriptionReceived, (segments, participant) => {
+          const who = participant && room.localParticipant &&
+            participant.identity === room.localParticipant.identity ? 'you' : 'eva';
+          segments.forEach((seg) => {
+            if (seg.final) addCaption(seg.text, who);
+          });
+        });
+
+        room.on(LivekitClient.RoomEvent.Disconnected, () => {
+          setStatus('Disconnected');
+          connectBtn.style.display = 'inline-block';
+          disconnectBtn.style.display = 'none';
+        });
+
+        setStatus('Connecting...');
+        await room.connect(data.url, data.token);
+
+        setStatus('Connected - enabling microphone...');
+        await room.localParticipant.setMicrophoneEnabled(true);
+
+        setStatus('🟢 Listening - say hi to Eva');
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = 'inline-block';
+      } catch (err) {
+        console.error(err);
+        setStatus('Error: ' + err.message + ' (check console)');
+      }
+    }
+
+    async function disconnect() {
+      if (room) {
+        await room.disconnect();
+        room = null;
+      }
+    }
+
+    connectBtn.addEventListener('click', connect);
+    disconnectBtn.addEventListener('click', disconnect);
+  </script>
+</body>
+</html>

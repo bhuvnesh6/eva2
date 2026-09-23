@@ -1,0 +1,4 @@
+flask>=3.0.0
+python-dotenv>=1.0.1
+livekit-api>=1.0.0
+livekit-agents[deepgram,groq,sarvam,silero,turn-detector]~=1.5
