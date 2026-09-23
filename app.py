@@ -139,12 +139,6 @@ def health():
 if __name__ == "__main__":
     logger.info("LiveKit URL: %s", LIVEKIT_URL)
     logger.info("Agent name: %s", AGENT_NAME)
-
-    if AUTO_START_AGENT:
-        start_agent_worker()
-    else:
-        logger.info("AUTO_START_AGENT=false - run `python agent.py dev` yourself in another terminal.")
-
-    # use_reloader=False is deliberate: Flask's debug reloader forks a
-    # second process, which would launch the agent subprocess twice.
+    # AUTO_START_AGENT / subprocess launch removed — supervisord runs
+    # agent.py as its own process in production now.
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=True, use_reloader=False)
